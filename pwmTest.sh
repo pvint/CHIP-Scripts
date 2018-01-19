@@ -1,5 +1,8 @@
 #!/bin/bash
 
+## Control PWM output on CHIP
+## To enable the PWM output, see:
+## http://dotslash.ca/howto-nextthing-chip-as-home-automation-device-and-pwm-12v-led-dimmer/
 USAGE="Usage: $SELF brightness (0-100)"
 SELF=`basename "$0"`
 PERIOD=200000	# Default period in ns
