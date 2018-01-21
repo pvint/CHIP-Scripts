@@ -5,7 +5,8 @@
 ## http://dotslash.ca/howto-nextthing-chip-as-home-automation-device-and-pwm-12v-led-dimmer/
 USAGE="Usage: $SELF brightness (0-100)"
 SELF=`basename "$0"`
-PERIOD=200000	# Default period in ns
+# 1000000 ns / 1 kHz seems to give a nice smooth gradient (visually)
+PERIOD=1000000	# Default period in ns
 DUTYCYCLE=0	# Start with zero duty cycle
 
 if [ -z "$1" ] 
