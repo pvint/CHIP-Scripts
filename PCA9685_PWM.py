@@ -21,7 +21,7 @@ import argparse
 parser = argparse.ArgumentParser(description="Control PCA9685 PWM Outputs via I2C.")
 parser.add_argument("-v", "--verbose", help="Enable verbose debugging output", action="store_true")
 parser.add_argument("-f","--freq", help="Set PWM Frequency", type=int)
-parser.add_argument("-d","--dutycycle", help="Set duty cycle in percent (0-100)", type=int)
+parser.add_argument("-d","--dutycycle", help="Set duty cycle in percent (0-100)", type=float)
 parser.add_argument("-s","--speed", help="Set speed (fading) delay (ms)", type=int)
 parser.add_argument("-a","--address", help="I2C Address, ie: 0x42",required=True)
 parser.add_argument("-c", "--channel", help="PWM Channel (0-15) or -1 for all", type=int,required=True)
@@ -34,7 +34,6 @@ args = parser.parse_args()
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
 
-print (args.reset)
 
 def software_reset():
     """Sends a software reset (SWRST) command to all servo drivers on the bus."""
@@ -63,7 +62,7 @@ if args.freq is not None:
 	pwm.set_pwm_freq(freq)
 else:
 	freq = pwm.get_pwm_freq()
-	print ("Freq: ", freq)
+	#print ("Freq: ", freq)
 	
 ## If frequency is default 200Hz we will assume that the device has been reset
 if freq <= 200:
@@ -87,9 +86,16 @@ dutycycle = args.dutycycle
 # Start of pules is 0, convert % duty cycle to 12 bit value
 end = int(40.95 * dutycycle )
 
+# Force 0 to off and 100 to full on to avoid rounding errors
+if dutycycle == 0:
+	end = 0
+
+if dutycycle == 100:
+	end = 4096
+
 # Get current value - if it's the same exit
 currentOn, currentOff = pwm.get_pwm(channel)
-print ("Was: ", currentOff, " New:", end)
+#print ("Was: ", currentOff, " New:", end)
 
 if currentOff == end:
 	exit()
@@ -100,8 +106,11 @@ if end > currentOff:
 else:
 	step = -1 * speed
 
-for level in range(currentOff, end, step):
+for level in range(currentOff, end + step, step):
+	if level > 4095:
+		level = 4095
 	pwm.set_pwm(channel, 0, level)
+	#print(currentOff, ":", end, ":", step, ":", level)
 
 exit()
 
