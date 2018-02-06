@@ -22,6 +22,7 @@ parser = argparse.ArgumentParser(description="Control PCA9685 PWM Outputs via I2
 parser.add_argument("-v", "--verbose", help="Enable verbose debugging output", action="store_true")
 parser.add_argument("-f","--freq", help="Set PWM Frequency", type=int)
 parser.add_argument("-d","--dutycycle", help="Set duty cycle in percent (0-100)", type=float)
+parser.add_argument("-e","--end", help="Set end of pulse (0-4095)", type=int)
 parser.add_argument("-s","--speed", help="Set speed (fading) delay (ms)", type=int)
 parser.add_argument("-a","--address", help="I2C Address, ie: 0x42",required=True)
 parser.add_argument("-c", "--channel", help="PWM Channel (0-15) or -1 for all", type=int,required=True)
@@ -29,6 +30,8 @@ parser.add_argument("-b", "--bus", help="I2C Bus Number (0-x)", type=int, requir
 parser.add_argument("-r", "--reset", help="Reset the PCA9685", action="store_true")
 
 args = parser.parse_args()
+
+verbose = args.verbose
 
 # Uncomment to enable debug output.
 #import logging
@@ -55,6 +58,16 @@ pwm = Adafruit_PCA9685.PCA9685( **a )
 #	print ("Resetting device")
 #	software_reset()
 
+## If frequency is default 200Hz we will assume that the device has been reset
+freq = pwm.get_pwm_freq()
+if freq <= 200:
+	print("Resetting PCA9685.")
+	a = {"address":int(args.address, 16), "busnum": args.bus, "reset": "True"}
+	pwm = Adafruit_PCA9685.PCA9685( **a )
+
+	freq = 1000
+	pwm.set_pwm_freq(freq)
+	
 
 # Set frequency if -f is specified
 if args.freq is not None:
@@ -64,12 +77,6 @@ else:
 	freq = pwm.get_pwm_freq()
 	#print ("Freq: ", freq)
 	
-## If frequency is default 200Hz we will assume that the device has been reset
-if freq <= 200:
-	freq = 1000
-	pwm.set_pwm_freq(freq)
-	
-
 
 channel = args.channel
 
@@ -78,20 +85,31 @@ if args.speed is not None:
 else:
 	speed = 0
 
-if args.dutycycle is None:
+if args.dutycycle is not None:
+	dutycycle = args.dutycycle
+
+	# Start of pules is 0, convert % duty cycle to 12 bit value
+	end = int(40.95 * dutycycle )
+
+	# Force 0 to off and 100 to full on to avoid rounding errors
+	if dutycycle == 0:
+		end = 0
+
+	if dutycycle == 100:
+		end = 4095
+
+else:
+	#  --end or -e overrides duty cycle
+	if args.end is not None:
+		end = args.end
+	else:
+		print("Either --dutycycle (-d) or --end (-e) must be specified.")
+		exit()
+
+## If -c -1 is set it's ALLCALL  - just force all LEDs to level instantly
+if channel == -1:
+	pwm.set_all_pwm(0, end)
 	exit()
-
-dutycycle = args.dutycycle
-
-# Start of pules is 0, convert % duty cycle to 12 bit value
-end = int(40.95 * dutycycle )
-
-# Force 0 to off and 100 to full on to avoid rounding errors
-if dutycycle == 0:
-	end = 0
-
-if dutycycle == 100:
-	end = 4096
 
 # Get current value - if it's the same exit
 currentOn, currentOff = pwm.get_pwm(channel)
@@ -106,12 +124,17 @@ if end > currentOff:
 else:
 	step = -1 * speed
 
+#print(currentOff, ":", end, ":", step)
+
 for level in range(currentOff, end + step, step):
 	if level > 4095:
 		level = 4095
+
 	pwm.set_pwm(channel, 0, level)
 	#print(currentOff, ":", end, ":", step, ":", level)
 
+# Force end correction to fix step issues
+pwm.set_pwm(channel, 0, end)
 exit()
 
 # Configure min and max servo pulse lengths
