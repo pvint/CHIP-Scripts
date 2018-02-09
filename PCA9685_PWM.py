@@ -48,6 +48,22 @@ def software_reset():
     device.writeRaw8(0x06)  # SWRST
 
 
+## Rec 709 luminosity adjustment
+## Reason: Our eyes do not perceive the brightness in a linear fashion
+## and the difference between 1% and 2% appears greater than the difference between 90% and 100%
+## TODO: Move this to the class
+
+# Level is 0-1 
+def linearToVisualLevel( level ):
+	if level < 0.081:
+		vLevel = level / 4.5
+	else:
+		vLevel = (( level + 0.099) / 1.099 ) ** ( 1 / 0.45 )  
+
+	#print ("Level set: ", level, " Adjusted level: ", vLevel)
+
+	return vLevel
+
 ## Init the device
 a = {"address":int(args.address, 16), "busnum": args.bus, "reset": args.reset}
 pwm = Adafruit_PCA9685.PCA9685( **a )
@@ -83,94 +99,66 @@ channel = args.channel
 if args.speed is not None:
 	speed = args.speed
 else:
-	speed = 0
+	speed = 1
 
+## All levels will be from 0-1
 if args.dutycycle is not None:
 	dutycycle = args.dutycycle
 
-	# Start of pules is 0, convert % duty cycle to 12 bit value
-	end = int(40.95 * dutycycle )
+	# Start of pulse is 0, convert % duty cycle to 12 bit value
+	end = dutycycle / 100.0
 
 	# Force 0 to off and 100 to full on to avoid rounding errors
 	if dutycycle == 0:
-		end = 0
+		end = 0.0
 
 	if dutycycle == 100:
-		end = 4095
+		end = 1.0
 
 else:
 	#  --end or -e overrides duty cycle
 	if args.end is not None:
-		end = args.end
+		end = args.end / 4095.0
 	else:
 		print("Either --dutycycle (-d) or --end (-e) must be specified.")
 		exit()
 
 ## If -c -1 is set it's ALLCALL  - just force all LEDs to level instantly
 if channel == -1:
-	pwm.set_all_pwm(0, end)
+	pwm.set_all_pwm(0, int ( end * 4095 ) )
 	exit()
+
+
+adjustedEnd = pwm.get_visual_level( end ) 
 
 # Get current value - if it's the same exit
 currentOn, currentOff = pwm.get_pwm(channel)
-#print ("Was: ", currentOff, " New:", end)
+#print ("Was: ", currentOff, " New:", adjustedEnd)
+currentOn /= 4095.0
+currentOff /= 4095.0
+#print ("CurrentOff: ", currentOff)
 
-if currentOff == end:
+if currentOff == adjustedEnd:
 	exit()
 
 ## Loop from current value to new value with delay
-if end > currentOff:
+if adjustedEnd > currentOff:
 	step = 1 * speed
 else:
 	step = -1 * speed
 
-#print(currentOff, ":", end, ":", step)
+#print(currentOff, " AdjEnd:", adjustedEnd, ":", step)
 
-for level in range(currentOff, end + step, step):
+first = int( 4095 * currentOff )
+last = int( 4095 * adjustedEnd )
+
+for level in range(first, last + step, step):
 	if level > 4095:
 		level = 4095
 
 	pwm.set_pwm(channel, 0, level)
-	#print(currentOff, ":", end, ":", step, ":", level)
 
 # Force end correction to fix step issues
-pwm.set_pwm(channel, 0, end)
+pwm.set_pwm(channel, 0, last)
+#print ( "Set to: ", last / 4095)
 exit()
-
-# Configure min and max servo pulse lengths
-servo_min = 150  # Min pulse length out of 4096
-servo_max = 600  # Max pulse length out of 4096
-
-# Helper function to make setting a servo pulse width simpler.
-def set_servo_pulse(channel, pulse):
-	pulse_length = 1000000	# 1,000,000 us per second
-	pulse_length //= 60	   # 60 Hz
-	print('{0}us per period'.format(pulse_length))
-	pulse_length //= 4096	 # 12 bits of resolution
-	print('{0}us per bit'.format(pulse_length))
-	pulse *= 1000
-	pulse //= pulse_length
-	pwm.set_pwm(channel, 0, pulse)
-
-pwm.set_pwm_freq(freq)
-
-
-## Testing getting current value
-pwm.get_pwm(channel)
-#print('Val: {0}'.format(mode1 = pwm._device.readU8()))
-
-print('Set duty cycle to 75% then 50%  Ctrl-C to quit...')
-while True:
-	# Move servo on channel O between extremes.
-	pwm.set_pwm(channel, 1, 3000)
-	oon, ooff = pwm.get_pwm(channel)
-	#print (oon, ooff)
-	print('Val: {0}	{1}'.format(oon,ooff))
-
-
-	time.sleep(1)
-	pwm.set_pwm(channel, 9, 2222)
-	oon, ooff = pwm.get_pwm(channel)
-	print('Val: {0}	{1}'.format(oon, ooff))
-
-	time.sleep(1)
